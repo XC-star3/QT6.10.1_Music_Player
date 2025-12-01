@@ -63,6 +63,28 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="btnAddToPlaylist">
+         <property name="text">
+          <string>添加到歌单</string>
+         </property>
+         <property name="icon">
+          <iconset resource="res.qrc">
+           <normaloff>:/images/images/audio24.png</normaloff>:/images/images/audio24.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnLoadPlaylist">
+         <property name="text">
+          <string>加载歌单</string>
+         </property>
+         <property name="icon">
+          <iconset resource="res.qrc">
+           <normaloff>:/images/images/audio24.png</normaloff>:/images/images/audio24.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="horizontalSpacer_5">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>

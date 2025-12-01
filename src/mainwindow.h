@@ -5,6 +5,7 @@
 #include <QtMultimedia>
 #include "lrcwidget.h"
 #include "searchwidget.h"
+#include "playlist_interface.h"
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -20,6 +21,7 @@ private:
     QString durationTime;
     bool isDragging;
     QPoint lastMousePosition;
+    PlaylistInterface *m_playlistInterface;
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -41,6 +43,14 @@ private slots:
     void do_sourceChanged(const QUrl &media);
     void do_playbackStateChanged(QMediaPlayer::PlaybackState newState);
     void do_metaDataChanged();
+    
+    // 收藏夹和歌单相关槽函数
+    void on_actionAdd_to_Favorites_triggered();
+    void on_actionShow_Favorites_triggered();
+    void on_actionCreate_Playlist_triggered();
+    void on_actionAdd_to_Playlist_triggered(); // 添加到指定歌单
+    void on_actionLoad_Playlist_triggered();    // 加载歌单
+    void updatePlaylistList();
 
 
     void on_btnAdd_clicked();

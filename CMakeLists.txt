@@ -27,6 +27,8 @@ set(SOURCES
     src/mainwindow.cpp
     src/lrcwidget.cpp
     src/searchwidget.cpp
+    src/playlist_manager.c
+    src/playlist_interface.cpp
 )
 
 # UI 文件列表

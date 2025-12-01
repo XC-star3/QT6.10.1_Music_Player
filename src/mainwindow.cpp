@@ -3,6 +3,8 @@
 #include "ui_lrcwidget.h"
 #include<QDebug>
 #include <QFileDialog>
+#include <QMessageBox>
+#include <QInputDialog>
 #include "lrcwidget.h"
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
@@ -68,6 +70,16 @@ MainWindow::MainWindow(QWidget *parent)
     lrcWidget->hide();
     QAudioOutput *audioOutput = new QAudioOutput(this);
     player->setAudioOutput(audioOutput);
+    
+    // 初始化收藏夹和歌单功能
+    m_playlistInterface = new PlaylistInterface(this);
+    m_playlistInterface->initialize();
+    updatePlaylistList(); // 加载并显示歌单列表
+    
+    // 连接添加到歌单按钮信号
+    connect(ui->btnAddToPlaylist, &QPushButton::clicked, this, &MainWindow::on_actionAdd_to_Playlist_triggered);
+    // 连接加载歌单按钮信号
+    connect(ui->btnLoadPlaylist, &QPushButton::clicked, this, &MainWindow::on_actionLoad_Playlist_triggered);
 
     searchWidget = new searchwidget(this);
     searchWidget->resize(760, 405);  // 设置宽度和高度为500像素
@@ -105,6 +117,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // 保存歌单数据
+    m_playlistInterface->savePlaylists();
+    delete m_playlistInterface;
     delete ui;
 }
 
@@ -660,4 +675,160 @@ void MainWindow::onSearchFinished(QNetworkReply *reply)
 void MainWindow::on_pushButton_clicked()
 {
     searchWidget->hide();
+}
+
+// 添加到收藏夹
+void MainWindow::on_actionAdd_to_Favorites_triggered()
+{
+    // 获取当前播放的歌曲
+    QString currentFilePath = player->source().toLocalFile();
+    if (currentFilePath.isEmpty()) {
+        QMessageBox::information(this, "提示", "当前没有播放的歌曲");
+        return;
+    }
+    
+    // 检查是否已在收藏夹中
+    if (m_playlistInterface->isInFavorites(currentFilePath)) {
+        QMessageBox::information(this, "提示", "该歌曲已在收藏夹中");
+        return;
+    }
+    
+    // 添加到收藏夹
+    if (m_playlistInterface->addCurrentSongToFavorites(currentFilePath, player)) {
+        QMessageBox::information(this, "成功", "歌曲已添加到收藏夹");
+    } else {
+        QMessageBox::warning(this, "失败", "添加到收藏夹失败");
+    }
+}
+
+// 显示收藏夹
+void MainWindow::on_actionShow_Favorites_triggered()
+{
+    QStringList songs = m_playlistInterface->getFavoritesSongs();
+    
+    ui->listWidget->clear();
+    foreach (const QString &songInfo, songs) {
+        QStringList parts = songInfo.split('|');
+        if (parts.size() >= 4) {
+            QString displayText = QString("%1 - %2").arg(parts[0]).arg(parts[1]);
+            ui->listWidget->addItem(displayText);
+            // 保存文件路径作为用户数据
+            ui->listWidget->item(ui->listWidget->count() - 1)->setData(Qt::UserRole, parts[3]);
+        }
+    }
+}
+
+// 创建新歌单
+void MainWindow::on_actionCreate_Playlist_triggered()
+{
+    bool ok;
+    QString playlistName = QInputDialog::getText(this, "新建歌单", "请输入歌单名称：", QLineEdit::Normal, "", &ok);
+    if (!ok || playlistName.isEmpty()) {
+        return;
+    }
+    
+    if (m_playlistInterface->createPlaylist(playlistName)) {
+        QMessageBox::information(this, "成功", "歌单创建成功");
+        // 更新歌单列表
+        updatePlaylistList();
+    } else {
+        QMessageBox::warning(this, "失败", "歌单创建失败，可能已存在同名歌单");
+    }
+}
+
+// 更新歌单列表
+void MainWindow::updatePlaylistList()
+{
+    QStringList playlists = m_playlistInterface->getAllPlaylistNames();
+    // 可以在这里更新UI中的歌单列表
+    qDebug() << "所有歌单:" << playlists;
+}
+
+// 添加到指定歌单
+void MainWindow::on_actionAdd_to_Playlist_triggered()
+{
+    // 获取当前播放的歌曲路径
+    QString filePath = player->source().toLocalFile();
+    if (filePath.isEmpty()) {
+        QMessageBox::warning(this, "提示", "当前没有播放歌曲，无法添加到歌单。");
+        return;
+    }
+
+    // 获取所有歌单名称
+    QStringList playlistNames = m_playlistInterface->getAllPlaylistNames();
+    if (playlistNames.isEmpty()) {
+        QMessageBox::warning(this, "提示", "请先创建歌单。");
+        return;
+    }
+
+    // 弹出选择歌单对话框
+    bool ok;
+    QString selectedPlaylist = QInputDialog::getItem(
+        this, "选择歌单", "请选择要添加到的歌单:",
+        playlistNames, 0, false, &ok);
+
+    if (ok && !selectedPlaylist.isEmpty()) {
+        // 获取歌曲信息（简化版）
+        QFileInfo fileInfo(filePath);
+        QString title = fileInfo.baseName();
+        int duration = player->duration() / 1000; // 转换为秒
+
+        // 添加到歌单
+        if (m_playlistInterface->addToPlaylist(selectedPlaylist, title, "", "", filePath, "", "", duration)) {
+            QMessageBox::information(this, "成功", "歌曲已成功添加到歌单！");
+        } else {
+            QMessageBox::warning(this, "失败", "添加到歌单失败！");
+        }
+    }
+}
+
+// 加载歌单
+void MainWindow::on_actionLoad_Playlist_triggered()
+{
+    // 获取所有歌单名称
+    QStringList playlistNames = m_playlistInterface->getAllPlaylistNames();
+    if (playlistNames.isEmpty()) {
+        QMessageBox::warning(this, "提示", "没有找到任何歌单。");
+        return;
+    }
+
+    // 弹出选择歌单对话框
+    bool ok;
+    QString selectedPlaylist = QInputDialog::getItem(
+        this, "选择歌单", "请选择要加载的歌单:",
+        playlistNames, 0, false, &ok);
+
+    if (ok && !selectedPlaylist.isEmpty()) {
+        // 获取歌单中的所有歌曲
+        QStringList songs = m_playlistInterface->getPlaylistSongs(selectedPlaylist);
+        
+        if (songs.isEmpty()) {
+            QMessageBox::information(this, "提示", "选中的歌单中没有歌曲。");
+            return;
+        }
+
+        // 清空当前播放列表
+        ui->listWidget->clear();
+        
+        // 添加歌单中的歌曲到播放列表
+        foreach (const QString &songInfo, songs) {
+            QStringList parts = songInfo.split('|');
+            if (parts.size() >= 4) {
+                QString displayText = QString("%1 - %2").arg(parts[0]).arg(parts[1]);
+                QListWidgetItem *item = new QListWidgetItem(displayText);
+                item->setIcon(QIcon(":/images/images/musicFile.png"));
+                item->setData(Qt::UserRole, QUrl::fromLocalFile(parts[3]));
+                ui->listWidget->addItem(item);
+            }
+        }
+
+        QMessageBox::information(this, "成功", QString("已成功加载 '%1' 歌单，共 %2 首歌曲。").arg(selectedPlaylist).arg(songs.size()));
+        
+        // 可选：自动播放第一首歌曲
+        if (ui->listWidget->count() > 0) {
+            ui->listWidget->setCurrentRow(0);
+            player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());
+            player->play();
+        }
+    }
 }
