@@ -1,5 +1,5 @@
-#include "mainwindow.h"
-#include "playlist_example.h"
+#include "../ui/mainwindow.h"
+#include "../playlist/playlist_example.h"
 #include <QApplication>
 
 int main(int argc, char *argv[])

@@ -3,9 +3,9 @@
 
 #include <QMainWindow>
 #include <QtMultimedia>
-#include "lrcwidget.h"
-#include "searchwidget.h"
-#include "playlist_interface.h"
+#include "../lyrics/lrcwidget.h"
+#include "../search/searchwidget.h"
+#include "../playlist/playlist_interface.h"
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE

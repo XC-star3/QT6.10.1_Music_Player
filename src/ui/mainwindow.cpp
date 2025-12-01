@@ -5,7 +5,8 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QInputDialog>
-#include "lrcwidget.h"
+#include "../lyrics/lrcwidget.h"
+#include "../playlist/playlist_interface.h"
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
 

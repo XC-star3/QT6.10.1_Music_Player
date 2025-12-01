@@ -23,12 +23,12 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network Svg)
 
 # 源文件列表
 set(SOURCES
-    src/main.cpp
-    src/mainwindow.cpp
-    src/lrcwidget.cpp
-    src/searchwidget.cpp
-    src/playlist_manager.c
-    src/playlist_interface.cpp
+    src/core/main.cpp
+    src/ui/mainwindow.cpp
+    src/lyrics/lrcwidget.cpp
+    src/search/searchwidget.cpp
+    src/playlist/playlist_manager.c
+    src/playlist/playlist_interface.cpp
 )
 
 # UI 文件列表
