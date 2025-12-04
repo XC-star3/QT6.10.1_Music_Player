@@ -42,7 +42,7 @@ core ──> ui ──> playlist_interface ──> playlist_manager ──> play
 
 ## 2. 开发者分工
 
-### 2.1 尧铭（组长）
+### 2.1 Y（组长）
 **负责范围**：所需数据文件读取和保存，歌词解析与显示
 
 **主要职责**：
@@ -55,7 +55,7 @@ core ──> ui ──> playlist_interface ──> playlist_manager ──> play
 
 **具体文件**：`src/playlist/playlist_manager.h`、`src/playlist/playlist_manager.c`、`src/playlist/playlist_util.h`、`src/playlist/playlist_util.c`、`src/lyrics/lrcwidget.h`、`src/lyrics/lrcwidget.cpp`
 
-### 2.2 邓陈涵
+### 2.2 D
 **负责范围**：搜索功能、核心播放器
 
 **主要职责**：
@@ -67,7 +67,7 @@ core ──> ui ──> playlist_interface ──> playlist_manager ──> play
 
 **具体文件**：`src/search/searchwidget.h`、`src/search/searchwidget.cpp`、`src/ui/mainwindow.h`、`src/ui/mainwindow.cpp`（播放控制部分）
 
-### 2.3 邢展宾
+### 2.3 X
 **负责范围**：UI设计、图形化界面整体框架、串联模块（封装代码）
 
 **主要职责**：
