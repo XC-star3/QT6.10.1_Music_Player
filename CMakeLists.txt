@@ -28,6 +28,7 @@ set(SOURCES
     src/lyrics/lrcwidget.cpp
     src/search/searchwidget.cpp
     src/playlist/playlist_manager.c
+    src/playlist/playlist_util.c
     src/playlist/playlist_interface.cpp
 )
 
@@ -93,48 +94,20 @@ set(CPACK_PACKAGE_VERSION "1.0.0")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Simple Music Player using Qt6")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "XC")
 
-# 安装规则
+# 安装规则 - 使用deploy目录中的内容
 install(TARGETS XC
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION .
 )
 
 # 安装资源文件
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION resources)
 
-# 安装Qt依赖（如果windeployqt不可用，手动复制）
-if(WIN32)
-    # Qt DLL文件列表
-    set(QT_DLLS
-        Qt6Core.dll
-        Qt6Gui.dll
-        Qt6Widgets.dll
-        Qt6Multimedia.dll
-        Qt6Network.dll
-        Qt6Svg.dll
+# 如果deploy目录存在，安装其中的所有文件（包含windeployqt生成的依赖）
+if(WIN32 AND EXISTS "${CMAKE_BINARY_DIR}/deploy/")
+    # 安装deploy目录中的所有DLL文件
+    install(DIRECTORY "${CMAKE_BINARY_DIR}/deploy/" DESTINATION .
+        PATTERN "XC.exe" EXCLUDE  # 排除可执行文件，由TARGETS安装
     )
-    
-    # 复制Qt DLL文件
-    foreach(DLL ${QT_DLLS})
-        if(EXISTS "${QT6_BIN_DIR}/${DLL}")
-            install(FILES "${QT6_BIN_DIR}/${DLL}" DESTINATION bin)
-        endif()
-    endforeach()
-    
-    # 构建Qt插件目录路径
-    get_filename_component(QT6_PLUGINS_DIR "${QT6_BIN_DIR}/../plugins" ABSOLUTE)
-    
-    # 复制平台插件
-    if(EXISTS "${QT6_PLUGINS_DIR}/platforms")
-        install(DIRECTORY "${QT6_PLUGINS_DIR}/platforms/" DESTINATION bin/platforms)
-    endif()
-    
-    # 复制多媒体插件
-    if(EXISTS "${QT6_PLUGINS_DIR}/audio")
-        install(DIRECTORY "${QT6_PLUGINS_DIR}/audio/" DESTINATION bin/audio)
-    endif()
-    if(EXISTS "${QT6_PLUGINS_DIR}/mediaservice")
-        install(DIRECTORY "${QT6_PLUGINS_DIR}/mediaservice/" DESTINATION bin/mediaservice)
-    endif()
     
     # 使用ZIP生成器
     set(CPACK_GENERATOR "ZIP")

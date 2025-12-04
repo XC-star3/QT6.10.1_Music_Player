@@ -45,25 +45,14 @@ lrcwidget::lrcwidget(QWidget *parent) :
     font.setBold(true);
     font.setItalic(false);
     noLyricsLabel->setFont(font);
-
-
     stackedWidget->setGeometry(320,80,500,400);
 
-
-
-
-    // 将 noLyricsLabel 添加到 stackedWidget
     stackedWidget->addWidget(noLyricsLabel);
-
-    // 将 lrc_list 添加到 stackedWidget
-    //stackedWidget->addWidget(ui->lrc_list);
     stackedWidget->setCurrentWidget(noLyricsLabel);
 
 
-    // 调整按钮层级关系
     ui->btnLrcClose->raise();
 
-    //创建动画对象
     ui->lrc_list->setStyleSheet(
         "QListWidget {"
         "    background: transparent;"      // 设置背景透明
@@ -197,9 +186,6 @@ QMap<QTime, QString> lrcwidget::parseLyrics(const QString &filePath)
 
 void lrcwidget::updateLyrics(qint64 position)
 {
-
-
-
     int totalSeconds = position / 1000; // 将毫秒转换为秒
     int seconds = totalSeconds % 60; // 计算剩余的秒数
     int minutes = totalSeconds / 60; // 计算分钟数
@@ -208,7 +194,6 @@ void lrcwidget::updateLyrics(qint64 position)
     QTime currentTime(0, minutes, seconds, milliseconds);
     //QString currentLyric = "No lyric available"; // 默认文本
     QTime bestMatch(0, 0, 0, 0); // 初始化为一个有效的最小时间
-
 
     // 查找第一个大于当前时间的迭代器
     auto it = lyricsMap.upperBound(currentTime);
@@ -238,7 +223,6 @@ void lrcwidget::updateLyrics(qint64 position)
 
 }
 
-
 void lrcwidget::on_horizontalSlider_sliderMoved(int position)
 {
     emit sliderMoved(position);
@@ -254,15 +238,9 @@ void lrcwidget::on_horizontalSlider_sliderReleased()
     emit sliderReleased();
 }
 
-
 void lrcwidget::setCoverImage(const QPixmap &pixmap)
 {
-//    // 将传入的 QPixmap 设置为 lrclabel_cover 的图片
-//    ui->lrclabel_cover->setScaledContents(true);
-//    ui->lrclabel_cover->setPixmap(pixmap);
-//    coverPixmap = pixmap;
-//    QPixmap pixmapC(pixmap);
-//    pixmapC = pixmap.scaled(ui->labCov->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
     if (!pixmap.isNull()) {
         coverPixmap = pixmap;
     }
@@ -271,7 +249,6 @@ void lrcwidget::setCoverImage(const QPixmap &pixmap)
     QPixmap scaledPixmap = coverPixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     ui->labCov->setPixmap(scaledPixmap);
 
-    //ui->labCov->setFixedSize(coverPixmap.size());
     update();//触发重绘事件
 
 }

@@ -1,4 +1,5 @@
 #include "searchwidget.h"
+#include "../playlist/playlist_manager.h"
 #include <QVBoxLayout>
 #include <QLabel>
 

@@ -1,19 +1,7 @@
 #include "playlist_interface.h"
-
-// 使用extern "C"包装C语言头文件
-#ifdef __cplusplus
-extern "C" {
-#endif
 #include "playlist_manager.h"
-#ifdef __cplusplus
-}
-#endif
-
-#include <QDir>
-#include <QStandardPaths>
-#include <QMediaPlayer>
-#include <QMediaMetaData>
-#include <QDebug>
+#include <QStringList>
+#include <QFileInfo>
 
 PlaylistInterface::PlaylistInterface(QObject *parent) : QObject(parent), m_manager(nullptr)
 {
@@ -21,238 +9,108 @@ PlaylistInterface::PlaylistInterface(QObject *parent) : QObject(parent), m_manag
 
 PlaylistInterface::~PlaylistInterface()
 {
-    cleanup();
-}
-
-bool PlaylistInterface::initialize(const QString &dataDir)
-{
-    m_dataDir = dataDir;
-    
-    // 确保数据目录存在
-    ensureDataDirectory();
-    
-    // 初始化C语言管理器
-    m_manager = playlist_manager_init(m_dataDir.toUtf8().constData());
-    
-    if (!m_manager) {
-        qWarning() << "Failed to initialize playlist manager";
-        return false;
-    }
-    
-    // 加载已保存的歌单
-    loadPlaylists();
-    
-    return true;
-}
-
-void PlaylistInterface::cleanup()
-{
     if (m_manager) {
-        savePlaylists();
         playlist_manager_free(m_manager);
         m_manager = nullptr;
     }
 }
 
-void PlaylistInterface::ensureDataDirectory()
+bool PlaylistInterface::initialize(const QString &dataDirectory)
 {
-    QDir dir(m_dataDir);
-    if (!dir.exists()) {
-        dir.mkpath(".");
+    if (m_manager) {
+        playlist_manager_free(m_manager);
+        m_manager = nullptr;
     }
+    QByteArray dirUtf8 = dataDirectory.toUtf8();
+    m_manager = playlist_manager_init(dirUtf8.constData());
+    return m_manager != nullptr;
 }
 
-bool PlaylistInterface::addToFavorites(const QString &title, const QString &artist, const QString &album,
-                                     const QString &filePath, const QString &coverPath, const QString &lrcPath,
+bool PlaylistInterface::addToFavorites(const QString &title, const QString &artist, const QString &album, 
+                                     const QString &filePath, const QString &coverPath, const QString &lrcPath, 
                                      int duration)
 {
-    if (!m_manager) {
-        if (!initialize()) {
-            return false;
-        }
-    }
+    if (!ensureManagerInitialized()) return false;
+    SongInfo *songInfo = static_cast<SongInfo *>(createSongInfo(title, artist, album, filePath, coverPath, lrcPath, duration));
+    if (!songInfo) return false;
     
-    // 创建歌曲信息
-    SongInfo *song = create_song_info(
-        title.toUtf8().constData(),
-        artist.toUtf8().constData(),
-        album.toUtf8().constData(),
-        filePath.toUtf8().constData(),
-        coverPath.toUtf8().constData(),
-        lrcPath.toUtf8().constData(),
-        duration
-    );
-    
-    if (!song) {
-        return false;
-    }
-    
-    bool result = add_to_favorites(m_manager, song);
-    
-    // 如果添加失败，释放歌曲信息
+    bool result = add_to_favorites(m_manager, songInfo);
     if (!result) {
-        free_song_info(song);
+        free_song_info(songInfo);
     }
     
     return result;
-}
-
-bool PlaylistInterface::removeFromFavorites(const QString &filePath)
-{
-    if (!m_manager) {
-        return false;
-    }
-    
-    return remove_from_favorites(m_manager, filePath.toUtf8().constData());
-}
-
-bool PlaylistInterface::isInFavorites(const QString &filePath)
-{
-    if (!m_manager) {
-        return false;
-    }
-    
-    return is_in_favorites(m_manager, filePath.toUtf8().constData());
 }
 
 QStringList PlaylistInterface::getFavoritesSongs()
 {
-    QStringList songs;
-    
-    if (!m_manager) {
-        return songs;
-    }
-    
-    Playlist *favorites = get_favorites(m_manager);
-    if (!favorites || !favorites->head) {
-        return songs;
-    }
-    
-    // 遍历收藏夹中的所有歌曲
-    struct PlaylistItem *item = favorites->head;
-    while (item) {
-        if (item->song && item->song->file_path) {
-            QString songInfo = QString("%1|%2|%3|%4|%5")
-                .arg(item->song->title ? QString::fromUtf8(item->song->title) : "")
-                .arg(item->song->artist ? QString::fromUtf8(item->song->artist) : "")
-                .arg(item->song->album ? QString::fromUtf8(item->song->album) : "")
-                .arg(QString::fromUtf8(item->song->file_path))
-                .arg(item->song->duration);
-            songs.append(songInfo);
-        }
-        item = item->next;
-    }
-    
-    return songs;
+    if (!ensureManagerInitialized())
+        return QStringList();
+    return getSongsFromPlaylist(get_favorites(m_manager));
 }
 
-bool PlaylistInterface::createPlaylist(const QString &name)
+bool PlaylistInterface::removeFromFavorites(const QString &filePath)
 {
-    if (!m_manager) {
-        if (!initialize()) {
-            return false;
-        }
-    }
-    
-    Playlist *playlist = create_playlist(m_manager, name.toUtf8().constData());
-    return playlist != nullptr;
+    if (!ensureManagerInitialized()) return false;
+    QByteArray pathUtf8 = filePath.toUtf8();
+    return remove_from_favorites(m_manager, pathUtf8.constData());
 }
 
-bool PlaylistInterface::deletePlaylist(const QString &name)
+bool PlaylistInterface::isInFavorites(const QString &filePath)
 {
-    if (!m_manager) {
-        return false;
-    }
-    
-    return delete_playlist(m_manager, name.toUtf8().constData());
+    if (!ensureManagerInitialized()) return false;
+    QByteArray pathUtf8 = filePath.toUtf8();
+    return is_in_favorites(m_manager, pathUtf8.constData());
 }
 
 QStringList PlaylistInterface::getAllPlaylistNames()
 {
-    QStringList names;
-    
-    if (!m_manager) {
-        return names;
-    }
+    if (!ensureManagerInitialized()) return QStringList();
     
     int count = 0;
-    char **c_names = get_all_playlist_names(m_manager, &count);
+    char **names = get_all_playlist_names(m_manager, &count);
+    if (!names) return QStringList();
     
-    if (c_names && count > 0) {
-        for (int i = 0; i < count; i++) {
-            if (c_names[i]) {
-                names.append(QString::fromUtf8(c_names[i]));
-            }
-        }
-        free_playlist_names(c_names, count);
+    QStringList result;
+    for (int i = 0; i < count; i++) {
+        result.append(QString::fromUtf8(names[i]));
     }
     
-    return names;
-}
-
-bool PlaylistInterface::addToPlaylist(const QString &playlistName, const QString &title, const QString &artist,
-                                    const QString &album, const QString &filePath, const QString &coverPath,
-                                    const QString &lrcPath, int duration)
-{
-    if (!m_manager) {
-        if (!initialize()) {
-            return false;
-        }
-    }
-    
-    // 获取或创建歌单
-    Playlist *playlist = get_playlist(m_manager, playlistName.toUtf8().constData());
-    if (!playlist) {
-        playlist = create_playlist(m_manager, playlistName.toUtf8().constData());
-        if (!playlist) {
-            return false;
-        }
-    }
-    
-    // 创建歌曲信息
-    SongInfo *song = create_song_info(
-        title.toUtf8().constData(),
-        artist.toUtf8().constData(),
-        album.toUtf8().constData(),
-        filePath.toUtf8().constData(),
-        coverPath.toUtf8().constData(),
-        lrcPath.toUtf8().constData(),
-        duration
-    );
-    
-    if (!song) {
-        return false;
-    }
-    
-    bool result = add_to_playlist(playlist, song);
-    
-    // 如果添加失败，释放歌曲信息
-    if (!result) {
-        free_song_info(song);
-    } else {
-        // 保存歌单
-        savePlaylists();
-    }
-    
+    free_playlist_names(names, count);
     return result;
 }
 
-bool PlaylistInterface::removeFromPlaylist(const QString &playlistName, const QString &filePath)
+bool PlaylistInterface::createPlaylist(const QString &name)
 {
-    if (!m_manager) {
-        return false;
-    }
+    if (!ensureManagerInitialized()) return false;
+    QByteArray nameUtf8 = name.toUtf8();
+    return create_playlist(m_manager, nameUtf8.constData()) != nullptr;
+}
+
+bool PlaylistInterface::deletePlaylist(const QString &name)
+{
+    if (!ensureManagerInitialized()) return false;
+    QByteArray nameUtf8 = name.toUtf8();
+    return delete_playlist(m_manager, nameUtf8.constData());
+}
+
+bool PlaylistInterface::addToPlaylist(const QString &playlistName, const QString &title, const QString &artist, 
+                                     const QString &album, const QString &filePath, const QString &coverPath, 
+                                     const QString &lrcPath, int duration)
+{
+    if (!ensureManagerInitialized()) return false;
+    QByteArray playlistUtf8 = playlistName.toUtf8();
+    Playlist *playlist = get_playlist(m_manager, playlistUtf8.constData());
+    if (!playlist) return false;
     
-    Playlist *playlist = get_playlist(m_manager, playlistName.toUtf8().constData());
-    if (!playlist) {
-        return false;
-    }
+    SongInfo *songInfo = static_cast<SongInfo *>(createSongInfo(title, artist, album, filePath, coverPath, lrcPath, duration));
+    if (!songInfo) return false;
     
-    bool result = remove_from_playlist(playlist, filePath.toUtf8().constData());
-    
-    if (result) {
-        // 保存歌单
-        savePlaylists();
+    bool result = add_to_playlist(playlist, songInfo);
+    if (!result) {
+        free_song_info(songInfo);
+    } else {
+    save_playlists(m_manager);
     }
     
     return result;
@@ -260,68 +118,104 @@ bool PlaylistInterface::removeFromPlaylist(const QString &playlistName, const QS
 
 QStringList PlaylistInterface::getPlaylistSongs(const QString &playlistName)
 {
-    QStringList songs;
-    
-    if (!m_manager) {
-        return songs;
+    if (!ensureManagerInitialized()) return QStringList();
+    QByteArray playlistUtf8 = playlistName.toUtf8();
+    Playlist *playlist = get_playlist(m_manager, playlistUtf8.constData());
+    return getSongsFromPlaylist(playlist);
+}
+
+bool PlaylistInterface::removeFromPlaylist(const QString &playlistName, const QString &filePath)
+{
+    if (!ensureManagerInitialized()) return false;
+    QByteArray playlistUtf8 = playlistName.toUtf8();
+    Playlist *playlist = get_playlist(m_manager, playlistUtf8.constData());
+    if (!playlist) return false;
+    QByteArray pathUtf8 = filePath.toUtf8();
+    bool result = remove_from_playlist(playlist, pathUtf8.constData());
+    if (result) {
+        save_playlists(m_manager);
     }
     
-    Playlist *playlist = get_playlist(m_manager, playlistName.toUtf8().constData());
-    if (!playlist || !playlist->head) {
-        return songs;
-    }
-    
-    // 遍历歌单中的所有歌曲
-    struct PlaylistItem *item = playlist->head;
-    while (item) {
-        if (item->song && item->song->file_path) {
-            QString songInfo = QString("%1|%2|%3|%4|%5")
-                .arg(item->song->title ? QString::fromUtf8(item->song->title) : "")
-                .arg(item->song->artist ? QString::fromUtf8(item->song->artist) : "")
-                .arg(item->song->album ? QString::fromUtf8(item->song->album) : "")
-                .arg(QString::fromUtf8(item->song->file_path))
-                .arg(item->song->duration);
-            songs.append(songInfo);
-        }
-        item = item->next;
-    }
-    
-    return songs;
+    return result;
 }
 
 bool PlaylistInterface::savePlaylists()
 {
-    if (!m_manager) {
-        return false;
-    }
-    
+    if (!ensureManagerInitialized()) return false;
     return save_playlists(m_manager);
-}
-
-bool PlaylistInterface::loadPlaylists()
-{
-    if (!m_manager) {
-        return false;
-    }
-    
-    return load_playlists(m_manager);
 }
 
 bool PlaylistInterface::addCurrentSongToFavorites(const QString &filePath, QMediaPlayer *player)
 {
+    if (!ensureManagerInitialized() || !player) return false;
+    
+    // 从播放器获取歌曲元数据
     QString title, artist, album;
-    int duration = 0;
-    
-    // 简化实现，暂时跳过元数据获取
-    // 在实际使用时，可以根据具体Qt版本的API调整元数据获取方式
-    if (player) {
-        duration = player->duration() / 1000;  // 只获取时长
-    }
-    
-    // 使用文件名作为标题
+    int duration = player->duration() / 1000; // 转换为秒
+
+    // 简单实现：直接使用文件信息作为标题
     QFileInfo fileInfo(filePath);
     title = fileInfo.baseName();
+
+    // 添加到收藏夹（封面和歌词路径暂为空）
+    return addToFavorites(title, artist, album, filePath, QString(), QString(), duration);
+}
+
+// 辅助方法实现
+bool PlaylistInterface::ensureManagerInitialized()
+{
+    return m_manager != nullptr;
+}
+
+QString PlaylistInterface::songInfoToString(void *song)
+{
+    SongInfo *songInfo = static_cast<SongInfo *>(song);
+    if (!songInfo) return QString();
+    auto toQ = [](const char *s, const char *def){ return s ? QString::fromUtf8(s) : QString::fromUtf8(def); };
+    QString title = toQ(songInfo->title, "Unknown Title");
+    QString artist = toQ(songInfo->artist, "Unknown Artist");
+    QString album = toQ(songInfo->album, "Unknown Album");
+    QString filePath = songInfo->file_path ? QString::fromUtf8(songInfo->file_path) : QString();
+
+    // 使用 QString::arg 链式调用在多个字段时阅读性差，直接拼接更直观
+    return title + '|' + artist + '|' + album + '|' + filePath + '|' + QString::number(songInfo->duration);
+}
+
+void *PlaylistInterface::createSongInfo(const QString &title, const QString &artist, const QString &album, 
+                                       const QString &filePath, const QString &coverPath, const QString &lrcPath, 
+                                       int duration)
+{
+    // 保持 UTF-8 临时数据的生命周期，避免传递临时 constData() 后被释放
+    QByteArray titleUtf8 = title.toUtf8();
+    QByteArray artistUtf8 = artist.toUtf8();
+    QByteArray albumUtf8 = album.toUtf8();
+    QByteArray fileUtf8 = filePath.toUtf8();
+    QByteArray coverUtf8 = coverPath.toUtf8();
+    QByteArray lrcUtf8 = lrcPath.toUtf8();
+
+    return create_song_info(
+        titleUtf8.constData(),
+        artistUtf8.constData(),
+        albumUtf8.constData(),
+        fileUtf8.constData(),
+        coverUtf8.constData(),
+        lrcUtf8.constData(),
+        duration
+    );
+}
+
+QStringList PlaylistInterface::getSongsFromPlaylist(void *playlist)
+{
+    QStringList result;
+    if (!playlist) return result;
     
-    // 添加到收藏夹
-    return addToFavorites(title, artist, album, filePath, "", "", duration);
+    PlaylistItem *item = static_cast<Playlist *>(playlist)->head;
+    while (item) {
+        if (item->song) {
+            result.append(songInfoToString(item->song));
+        }
+        item = item->next;
+    }
+    
+    return result;
 }

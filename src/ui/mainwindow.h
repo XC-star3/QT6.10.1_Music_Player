@@ -28,6 +28,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 public:
     MainWindow(QWidget *parent = nullptr);
@@ -101,6 +102,7 @@ private slots:
 
     void lrcWidget_sliderPressed();
     void lrcWidget_sliderReleased();
+    void showContextMenu(const QPoint &pos);
 
 private:
     Ui::MainWindow *ui;

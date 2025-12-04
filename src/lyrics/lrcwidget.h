@@ -68,3 +68,5 @@ private:
 };
 
 #endif // LRCWIDGET_H
+
+// note: getter implementations are in lrcwidget.cpp

@@ -1,15 +1,24 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "ui_lrcwidget.h"
-#include<QDebug>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <QTime>
+#include <QMenu>
+#include <QAction>
 #include "../lyrics/lrcwidget.h"
 #include "../playlist/playlist_interface.h"
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    if (m_playlistInterface) {
+        m_playlistInterface->savePlaylists();
+    }
+    QMainWindow::closeEvent(event);
+}
+
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-
     // 处理键盘按键事件
     if (event->type() == QEvent::KeyPress) {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
@@ -21,29 +30,19 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     // 处理滑块点击事件
     if (event->type() == QEvent::MouseButtonPress && watched == ui->sliderPosition) {
-
         QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-        // 计算鼠标点击位置对应的值
-
-        if (mouseEvent->button() == Qt::LeftButton)	//判断左键
-        {
-
+        if (mouseEvent->button() == Qt::LeftButton) {
             int clickedValue = ui->sliderPosition->minimum() + ((ui->sliderPosition->maximum() - ui->sliderPosition->minimum()) * mouseEvent->pos().x() / ui->sliderPosition->width());
-            qDebug() << "触发了点击事件，位置为:" << clickedValue << Qt::endl;
             ui->sliderPosition->setValue(clickedValue);
-            player->setPosition(clickedValue); // 设置播放器位置
-
+            player->setPosition(clickedValue);
             return true;
-
         }
-
     } else if (event->type() == QEvent::MouseMove && watched == ui->sliderPosition) {
-        qDebug() << "触发了移动事件" << Qt::endl;
         QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
         if (mouseEvent->buttons() & Qt::LeftButton) {
             int draggedValue = ui->sliderPosition->minimum() + ((ui->sliderPosition->maximum() - ui->sliderPosition->minimum()) * mouseEvent->pos().x() / ui->sliderPosition->width());
-            ui->sliderPosition->setValue(draggedValue); // 更新滑块的值
-            player->setPosition(draggedValue); // 设置播放器位置
+            ui->sliderPosition->setValue(draggedValue);
+            player->setPosition(draggedValue);
             return true;
         }
     }
@@ -56,52 +55,61 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-
+    
     QPixmap pixmap(":/images/images/KK.jpg");
     ui->label->setPixmap(pixmap.scaled(ui->label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-
+    
     isDragging = false;
     setWindowFlags(Qt::FramelessWindowHint);
     loadSavedMusic();
     ui->listWidget->installEventFilter(this);
     ui->sliderPosition->installEventFilter(this);
+    
+    // 启用右键菜单
+    ui->listWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->listWidget, &QListWidget::customContextMenuRequested, this, &MainWindow::showContextMenu);
+    
     player = new QMediaPlayer(this);
     lrcWidget = new lrcwidget(this);
-    //lrcWidget->raise();
     lrcWidget->hide();
+    
     QAudioOutput *audioOutput = new QAudioOutput(this);
     player->setAudioOutput(audioOutput);
     
     // 初始化收藏夹和歌单功能
     m_playlistInterface = new PlaylistInterface(this);
-    m_playlistInterface->initialize();
-    updatePlaylistList(); // 加载并显示歌单列表
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString dataDir = appDir + "/data/playlists";
+    m_playlistInterface->initialize(dataDir);
+    updatePlaylistList();
     
-    // 连接添加到歌单按钮信号
+    // 连接按钮信号
+    connect(ui->btnCreatePlaylist, &QPushButton::clicked, this, &MainWindow::on_actionCreate_Playlist_triggered);
     connect(ui->btnAddToPlaylist, &QPushButton::clicked, this, &MainWindow::on_actionAdd_to_Playlist_triggered);
-    // 连接加载歌单按钮信号
     connect(ui->btnLoadPlaylist, &QPushButton::clicked, this, &MainWindow::on_actionLoad_Playlist_triggered);
+    connect(ui->btnShowFavorites, &QPushButton::clicked, this, &MainWindow::on_actionShow_Favorites_triggered);
+    connect(ui->btnAddToFavorites, &QPushButton::clicked, this, &MainWindow::on_actionAdd_to_Favorites_triggered);
 
     searchWidget = new searchwidget(this);
-    searchWidget->resize(760, 405);  // 设置宽度和高度为500像素
-    searchWidget->move(11, 52);  // 将searchWidget移动到(100, 100)的位置
+    searchWidget->resize(760, 405);
+    searchWidget->move(11, 52);
     searchWidget->hide();
     networkManager = new QNetworkAccessManager(this);
 
-
+    // 连接播放器信号
     connect(player, &QMediaPlayer::positionChanged, this, &MainWindow::do_positionChanged);
     connect(player, &QMediaPlayer::durationChanged, this, &MainWindow::do_durationChanged);
     connect(player, &QMediaPlayer::sourceChanged, this, &MainWindow::do_sourceChanged);
     connect(player, &QMediaPlayer::playbackStateChanged, this, &MainWindow::do_playbackStateChanged);
     connect(player, &QMediaPlayer::metaDataChanged, this, &MainWindow::do_metaDataChanged);
 
-    //链接歌词界面
+    // 连接歌词界面
     connect(player, &QMediaPlayer::positionChanged, lrcWidget, &lrcwidget::updateLyrics);
 
-    //链接网络搜索歌曲
+    // 连接网络搜索
     connect(networkManager, &QNetworkAccessManager::finished, this, &MainWindow::onSearchFinished);
 
-    // 链接 lrcwidget 的控件与 MainWindow 的槽函数
+    // 连接 lrcwidget 控件
     connect(lrcWidget->getSlider(), &QSlider::sliderMoved, this, &MainWindow::lrcWidget_sliderMoved);
     connect(lrcWidget->getPlayButton(), &QPushButton::clicked, this, &MainWindow::lrcWidget_playPauseToggled);
     connect(lrcWidget->getPrevButton(), &QPushButton::clicked, this, &MainWindow::lrcWidget_prevClicked);
@@ -109,8 +117,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(lrcWidget->getSoundSlider(), &QSlider::valueChanged, this, &MainWindow::lrcWidget_volumeChanged);
     connect(lrcWidget->getSpeedSpinBox(), QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::lrcWidget_speedChanged);
     connect(lrcWidget->getModeButton(), &QPushButton::clicked, this, &MainWindow::lrcWidget_modeChanged);
-
-    // 连接 lrcwidget 的控件与 MainWindow 的槽函数
     connect(lrcWidget, &lrcwidget::sliderMoved, this, &MainWindow::lrcWidget_sliderMoved);
     connect(lrcWidget, &lrcwidget::sliderPressed, this, &MainWindow::lrcWidget_sliderPressed);
     connect(lrcWidget, &lrcwidget::sliderReleased, this, &MainWindow::lrcWidget_sliderReleased);
@@ -118,22 +124,18 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    // 保存歌单数据
     m_playlistInterface->savePlaylists();
     delete m_playlistInterface;
     delete ui;
 }
 
-
 void MainWindow::lrcWidget_sliderMoved(int value)
 {
-    qDebug() << "Slider moved to" << value;
     player->setPosition(value);
 }
 
 void MainWindow::lrcWidget_playPauseToggled()
 {
-    qDebug() << "Play/Pause toggled";
     if (player->playbackState() == QMediaPlayer::PlayingState) {
         player->pause();
     } else {
@@ -153,41 +155,34 @@ void MainWindow::lrcWidget_sliderReleased()
 
 void MainWindow::lrcWidget_prevClicked()
 {
-    qDebug() << "Previous clicked";
     on_btnPrevious_clicked();
 }
 
 void MainWindow::lrcWidget_nextClicked()
 {
-    qDebug() << "Next clicked";
     on_btnNext_clicked();
 }
 
 void MainWindow::lrcWidget_volumeChanged(int value)
 {
-    qDebug() << "Volume changed to" << value;
     player->audioOutput()->setVolume(value / 100.0);
 }
 
 void MainWindow::lrcWidget_speedChanged(double value)
 {
-    qDebug() << "Speed changed to" << value;
     player->setPlaybackRate(value);
 }
 
 void MainWindow::lrcWidget_modeChanged()
 {
-    qDebug() << "Mode changed";
     on_btnLoop_clicked(!loopPay);
 }
-
-
 
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         isDragging = true;
-        lastMousePosition = event->globalPos() - frameGeometry().topLeft();
+        lastMousePosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
         event->accept();
     }
     QMainWindow::mousePressEvent(event);
@@ -196,7 +191,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 void MainWindow::mouseMoveEvent(QMouseEvent *event)
 {
     if (isDragging && (event->buttons() & Qt::LeftButton)) {
-        move(event->globalPos() - lastMousePosition);
+        move(event->globalPosition().toPoint() - lastMousePosition);
         event->accept();
     }
     QMainWindow::mouseMoveEvent(event);
@@ -213,36 +208,25 @@ void MainWindow::mouseReleaseEvent(QMouseEvent *event)
 
 QStringList MainWindow::getSavedMusicPaths()
 {
-    // 获取应用程序的目录
     QString appDir = QCoreApplication::applicationDirPath();
-
-    // 相对于应用程序目录的音乐文件目录
     QString musicDirectory = appDir + "/sound";
-
-    qDebug() << "Music directory:" << musicDirectory;
-    // 使用 QDir 类来获取指定路径下的所有音乐文件
     QDir directory(musicDirectory);
     QStringList musicFiles = directory.entryList(QStringList() << "*.mp3" << "*.wav" << "*.wma" << "*.flac", QDir::Files);
-
-    // 将文件名转换成完整路径
+    
     QStringList musicPaths;
     foreach (const QString& fileName, musicFiles) {
-        QString filePath = musicDirectory + "/" + fileName;
-        musicPaths.append(filePath);
+        musicPaths.append(musicDirectory + "/" + fileName);
     }
-
+    
     return musicPaths;
 }
 
-
 void MainWindow::loadSavedMusic()
 {
-
     QStringList savedMusicPaths = getSavedMusicPaths();
-
     if(savedMusicPaths.isEmpty())
         return;
-
+    
     foreach (const auto& item, savedMusicPaths) {
         QFileInfo fileInfo(item);
         QListWidgetItem *aItem = new QListWidgetItem(fileInfo.fileName());
@@ -256,29 +240,28 @@ void MainWindow::do_positionChanged(qint64 position)
 {
     if(ui->sliderPosition->isSliderDown())
         return;
+    
     ui->sliderPosition->setSliderPosition(position);
     int secs = position/1000;
     int mins = secs/60;
     secs %= 60;
     positionTime = QString::asprintf("%d:%02d", mins, secs);
     ui->labRatio->setText(positionTime + "/" + durationTime);
-
-
-    // 更新歌词界面的进度条
+    
+    // 更新歌词界面
     lrcWidget->getSlider()->setValue(position);
-
-    // 更新 lrcWidget 的 labProcess 的值
+    
+    // 更新进度显示
     QTime currentTime(0, 0);
     currentTime = currentTime.addMSecs(position);
     QString timeStr = currentTime.toString("mm:ss");
-
+    
     int duration = player->duration();
     QTime totalTime(0, 0);
     totalTime = totalTime.addMSecs(duration);
     QString totalTimeStr = totalTime.toString("mm:ss");
-
+    
     lrcWidget->updateLabProcess(timeStr + "/" + totalTimeStr);
-
 }
 
 void MainWindow::do_durationChanged(qint64 duration)
@@ -289,25 +272,23 @@ void MainWindow::do_durationChanged(qint64 duration)
     secs %= 60;
     durationTime = QString::asprintf("%d:%02d", mins, secs);
     ui->labRatio->setText(positionTime + "/" + durationTime);
-
-    // 更新歌词界面的进度条最大值
+    
+    // 更新歌词界面进度条最大值
     lrcWidget->getSlider()->setMaximum(duration);
 }
 
 void MainWindow::do_sourceChanged(const QUrl &media)
 {
     ui->labCurMedia->setText(media.fileName());
-
-    // 重置封面为默认封面
+    
+    // 重置封面和歌词
     lrcWidget->resetCoverImage();
-
-    // 清空当前歌词
     lrcWidget->clearLyrics();
-
+    
     QString musicPath = media.toLocalFile();
     QFileInfo fileInfo(musicPath);
     QString lyricsPath = fileInfo.path() + "/" + fileInfo.completeBaseName() + ".lrc";
-
+    
     lrcWidget->loadLyrics(lyricsPath);
 }
 
@@ -316,11 +297,8 @@ void MainWindow::do_playbackStateChanged(QMediaPlayer::PlaybackState newState)
     ui->btnPlay->setEnabled(newState != QMediaPlayer::PlayingState);
     ui->btnPause->setEnabled(newState == QMediaPlayer::PlayingState);
     ui->btnStop->setEnabled(newState == QMediaPlayer::PlayingState);
-
-
-    if((newState == QMediaPlayer::StoppedState) && loopPay)
-    {
-        //循环播放: 1、自动下一首。2、从最后一首跳到第一首
+    
+    if((newState == QMediaPlayer::StoppedState) && loopPay) {
         int count = ui->listWidget->count();
         int curRow = ui->listWidget->currentRow();
         ++curRow;
@@ -329,68 +307,50 @@ void MainWindow::do_playbackStateChanged(QMediaPlayer::PlaybackState newState)
         player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());
         player->play();
     }
-    //如果不是循环播放,播完一首就暂停
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
-    //qDebug() << "Mainwindow_size_changed" << Qt::endl;
     QMainWindow::resizeEvent(event);
-    qDebug() << "Mainwindow_size_changed" << Qt::endl;
     updateCoverArtSize();
 }
 
 void MainWindow::do_metaDataChanged()
 {
-
-    //元数据发生变化，修改显示的图片
-
     QMediaMetaData metaData = player->metaData();
-    qDebug() << metaData.value(QMediaMetaData::ThumbnailImage) << Qt::endl;
-    qDebug() << metaData.value(QMediaMetaData::CoverArtImage) << Qt::endl;
     QVariant metaImg = metaData.value(QMediaMetaData::ThumbnailImage);
-    if(metaImg.isValid())
-    {
-        qDebug() << "封面图片加载成功！" << Qt::endl;
+    
+    if(metaImg.isValid()) {
         QImage img = metaImg.value<QImage>();
         QPixmap musicPixmp = QPixmap::fromImage(img);
-
+        
         ui->labPic->setPixmap(musicPixmp);
         ui->btnCover->setIcon(musicPixmp);
-        ui->btnCover->setIconSize(ui->btnCover->size()); // 图像大小与按钮相同
-        ui->btnCover->setFlat(true); // 使按钮背景透明
-        ui->btnCover->setStyleSheet("border: none;"); // 移除按钮的边框
-
+        ui->btnCover->setIconSize(ui->btnCover->size());
+        ui->btnCover->setFlat(true);
+        ui->btnCover->setStyleSheet("border: none;");
+        
         updateCoverArtSize();
-    } else{
-        qDebug() << "未找到封面图片!";
-        // 未找到封面图片时，使用默认封面
+    } else {
+        // 使用默认封面
         QPixmap defaultCover(":/images/images/KK.jpg");
         ui->labPic->setPixmap(defaultCover);
         ui->btnCover->setIcon(defaultCover);
         ui->btnCover->setIconSize(ui->btnCover->size());
         ui->btnCover->setFlat(true);
         ui->btnCover->setStyleSheet("border: none;");
-
+        
         updateCoverArtSize();
-        //ui->labPic->clear();
     }
-
 }
 
-
-
-void MainWindow:: updateCoverArtSize()
+void MainWindow::updateCoverArtSize()
 {
-    // 获取当前窗口大小
     QSize newSize = ui->scrollArea->size();
-
-    // 获取加载的封面图片
     QPixmap pixmap = ui->labPic->pixmap(Qt::ReturnByValue);
-    if (!pixmap.isNull())
-    {
-        // 根据窗口大小调整封面图片大小
-        QSize scaledSize = newSize - QSize(30, 30); // 适当减去一些边距
+    
+    if (!pixmap.isNull()) {
+        QSize scaledSize = newSize - QSize(30, 30);
         QPixmap scaledPixmap = pixmap.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         ui->labPic->setPixmap(scaledPixmap);
     }
@@ -401,11 +361,11 @@ void MainWindow::on_btnAdd_clicked()
     QString curPath = QDir::homePath();
     QString dlgTitle = "选择音频文件";
     QString filter = "音频文件(*.mp3 *.wav *.wma);;所有文件(*.*)";
-
+    
     QStringList fileList = QFileDialog::getOpenFileNames(this, dlgTitle, curPath, filter);
     if(fileList.isEmpty())
         return;
-
+    
     foreach (const auto& item, fileList) {
         QFileInfo fileInfo(item);
         QListWidgetItem *aItem = new QListWidgetItem(fileInfo.fileName());
@@ -413,62 +373,53 @@ void MainWindow::on_btnAdd_clicked()
         aItem->setData(Qt::UserRole, QUrl::fromLocalFile(item));
         ui->listWidget->addItem(aItem);
     }
-
-    //如果现在没有正在播放，就开始播放第一个文件
-    if(player->playbackState() != QMediaPlayer::PlayingState){
+    
+    // 如果现在没有正在播放，就开始播放第一个文件
+    if(player->playbackState() != QMediaPlayer::PlayingState && ui->listWidget->count() > 0) {
         ui->listWidget->setCurrentRow(0);
-        QUrl source = ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>();
-        player->setSource(source);
+        player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());
         player->play();
     }
 }
 
-
 void MainWindow::on_btnRemove_clicked()
 {
-    //只是从Widget移除
     int index = ui->listWidget->currentRow();
     if(index < 0) return;
-
+    
     delete ui->listWidget->takeItem(index);
     if(ui->listWidget->count() <= 0)
         loopPay = false;
-
 }
-
 
 void MainWindow::on_btnClear_clicked()
 {
     loopPay = false;
     ui->listWidget->clear();
     player->stop();
-
 }
-
 
 void MainWindow::on_btnPlay_clicked()
 {
-    if(player->playbackState() == QMediaPlayer::PausedState)
-    {
+    if(player->playbackState() == QMediaPlayer::PausedState) {
         player->play();
         return;
     }
+    
     if(ui->listWidget->count() <= 0)
         return;
+    
     if(ui->listWidget->currentRow() < 0)
         ui->listWidget->setCurrentRow(0);
+        
     player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());
-
     player->play();
 }
-
 
 void MainWindow::on_btnPause_clicked()
 {
     player->pause();
-
 }
-
 
 void MainWindow::on_btnStop_clicked()
 {
@@ -476,19 +427,18 @@ void MainWindow::on_btnStop_clicked()
     player->stop();
 }
 
-
 void MainWindow::on_btnPrevious_clicked()
 {
     int curRow = ui->listWidget->currentRow();
     --curRow;
     curRow = curRow < 0 ? ui->listWidget->count()-1 : curRow;
     ui->listWidget->setCurrentRow(curRow);
+    
     loopPay = false;
     player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());
     player->play();
     loopPay = ui->btnLoop->isChecked();
 }
-
 
 void MainWindow::on_btnNext_clicked()
 {
@@ -497,58 +447,47 @@ void MainWindow::on_btnNext_clicked()
     ++curRow;
     curRow = curRow >= count ? 0 : curRow;
     ui->listWidget->setCurrentRow(curRow);
+    
     loopPay = false;
     player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());
     player->play();
     loopPay = ui->btnLoop->isChecked();
 }
 
-
 void MainWindow::on_doubleSpinBox_valueChanged(double arg1)
 {
-    //player->setPlaybackRate(arg1);
-    // 先暂停播放
-    if (player->playbackState() == QMediaPlayer::PlayingState)
+    bool wasPlaying = (player->playbackState() == QMediaPlayer::PlayingState);
+    
+    if (wasPlaying)
         player->pause();
-
-    // 设置播放速率
+    
     player->setPlaybackRate(arg1);
-
-    // 如果之前是播放状态，恢复播放
-    if (player->playbackState() == QMediaPlayer::PausedState)
+    
+    if (wasPlaying)
         player->play();
 }
-
 
 void MainWindow::on_btnLoop_clicked(bool checked)
 {
     loopPay = checked;
 }
 
-
 void MainWindow::on_btnSound_clicked()
 {
     bool mute = player->audioOutput()->isMuted();
     player->audioOutput()->setMuted(!mute);
-    if(mute)
-        ui->btnSound->setIcon(QIcon(":/images/images/volumn.bmp"));
-    else
-        ui->btnSound->setIcon(QIcon(":/images/images/mute.bmp"));
-
+    ui->btnSound->setIcon(QIcon(mute ? ":/images/images/volumn.bmp" : ":/images/images/mute.bmp"));
 }
-
 
 void MainWindow::on_sliderVolumn_valueChanged(int value)
 {
     player->audioOutput()->setVolume(value/100.0);
 }
 
-
 void MainWindow::on_sliderPosition_valueChanged(int value)
 {
     player->setPosition(value);
 }
-
 
 void MainWindow::on_listWidget_doubleClicked(const QModelIndex &index)
 {
@@ -559,119 +498,100 @@ void MainWindow::on_listWidget_doubleClicked(const QModelIndex &index)
     loopPay = true;
 }
 
+void MainWindow::showContextMenu(const QPoint &pos)
+{
+    if (ui->listWidget->currentItem() == nullptr) {
+        return; // 如果没有选中任何项，不显示菜单
+    }
+    
+    QMenu menu(this);
+    
+    // 添加菜单项
+    QAction *addToPlaylistAction = new QAction("添加到歌单", this);
+    connect(addToPlaylistAction, &QAction::triggered, this, &MainWindow::on_actionAdd_to_Playlist_triggered);
+    
+    QAction *addToFavoritesAction = new QAction("添加到收藏夹", this);
+    connect(addToFavoritesAction, &QAction::triggered, this, &MainWindow::on_actionAdd_to_Favorites_triggered);
+    
+    menu.addAction(addToPlaylistAction);
+    menu.addAction(addToFavoritesAction);
+    
+    // 在鼠标位置显示菜单
+    menu.exec(ui->listWidget->mapToGlobal(pos));
+}
 
 void MainWindow::on_btnCover_clicked()
 {
-    qDebug() << 1 << Qt::endl;
-    //lrcwidget *lrc_widget = new lrcwidget(this);
-
-    qDebug() << 2 << Qt::endl;
     lrcWidget->setAttribute(Qt::WA_DeleteOnClose);
-    qDebug() << 3 << Qt::endl;
     lrcWidget->setWindowTitle("歌词窗口");
+    
     QMediaMetaData metaData = player->metaData();
     QVariant metaImg = metaData.value(QMediaMetaData::ThumbnailImage);
-    if(metaImg.isValid())
-    {
-        qDebug() << "封面图片2加载成功！" << Qt::endl;
+    if(metaImg.isValid()) {
         QImage img = metaImg.value<QImage>();
         QPixmap musicPixmp = QPixmap::fromImage(img);
         lrcWidget->setCoverImage(musicPixmp);
-
     }
-    qDebug() << 4 << Qt::endl;
+    
     lrcWidget->setGeometry(0, height(), width(), height());
-    qDebug() << 5 << Qt::endl;
     lrcWidget->show();
     lrcWidget->showLyric();
-    qDebug() << 6 << Qt::endl;
 }
-
 
 void MainWindow::on_btnSearch_clicked()
 {
-    qDebug() << "s1" << Qt::endl;
     QUrl url("http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=" + ui->editSerch->text() + "&page=1&pagesize=20&showtype=1");
-    qDebug() << "s2" << Qt::endl;
-
     QNetworkRequest request(url);
-    qDebug() << "s3" << Qt::endl;
     request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 ...");
-    qDebug() << "s4" << Qt::endl;
     request.setRawHeader("Referer", "http://www.kuwo.cn/");
-    qDebug() << "s5" << Qt::endl;
     networkManager->get(request);
-    qDebug() << "s6" << Qt::endl;
-
-
-//    QNetworkRequest request(url);
-//    qDebug() << "s3" << Qt::endl;
-//    networkManager->get(request);
-//    qDebug() << "s4" << Qt::endl;
 }
 
 void MainWindow::onSearchFinished(QNetworkReply *reply)
 {
-    int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    qDebug() << "HTTP Status Code:" << statusCode;
-    if(reply->error() == QNetworkReply::NoError)
-    {
-        qDebug() << "Network success:";
+    if(reply->error() == QNetworkReply::NoError) {
         QByteArray response_data = reply->readAll();
-        qDebug() << "Response data:" << response_data;
         QJsonDocument jsonDoc = QJsonDocument::fromJson(response_data);
-        if (!jsonDoc.isObject()) {
-            qDebug() << "Error: JSON document is not an object.";
-            return;
-        }
-        QJsonObject jsonObj = jsonDoc.object();
-        if (!jsonObj.contains("data") || !jsonObj["data"].isObject()) {
-            qDebug() << "Error: JSON 'data' is not an object or not exist.";
-            return;
-        }
-        QJsonObject dataObj = jsonObj["data"].toObject();
-        if (!dataObj.contains("info") || !dataObj["info"].isArray()) {
-            qDebug() << "Error: JSON 'info' is not an array or not exist.";
-            return;
-        }
-        QJsonArray results = dataObj["info"].toArray();
-
-        QStringList songInfoList;
-        for(const QJsonValue &value : results)
-        {
-            if (!value.isObject()) {
-                qDebug() << "Error: JSON element is not an object.";
-                continue;
+        
+        if (jsonDoc.isObject()) {
+            QJsonObject jsonObj = jsonDoc.object();
+            if (jsonObj.contains("data") && jsonObj["data"].isObject()) {
+                QJsonObject dataObj = jsonObj["data"].toObject();
+                if (dataObj.contains("info") && dataObj["info"].isArray()) {
+                    QJsonArray results = dataObj["info"].toArray();
+                    
+                    QStringList songInfoList;
+                    for(const QJsonValue &value : results) {
+                        if (value.isObject()) {
+                            QJsonObject songObj = value.toObject();
+                            QString songInfo;
+                            
+                            if (songObj.contains("songname") && songObj["songname"].isString()) {
+                                songInfo += songObj["songname"].toString() + ",";
+                            }
+                            if (songObj.contains("singername") && songObj["singername"].isString()) {
+                                songInfo += songObj["singername"].toString() + ",";
+                            }
+                            if (songObj.contains("duration") && songObj["duration"].isDouble()) {
+                                int duration = songObj["duration"].toInt();
+                                songInfo += QString::number(duration / 60) + "分" + QString::number(duration % 60) + "秒";
+                            }
+                            
+                            songInfoList.append(songInfo);
+                        }
+                    }
+                    
+                    if (searchWidget) {
+                        searchWidget->displaySearchResults(songInfoList);
+                        searchWidget->show();
+                    }
+                }
             }
-            QJsonObject songObj = value.toObject();
-            QString songInfo;
-            if (songObj.contains("songname") && songObj["songname"].isString()) {
-                songInfo +=  songObj["songname"].toString() + ",";
-            }
-            if (songObj.contains("singername") && songObj["singername"].isString()) {
-                songInfo += songObj["singername"].toString() + ",";
-            }
-            if (songObj.contains("duration") && songObj["duration"].isDouble()) {
-                int duration = songObj["duration"].toInt();
-                songInfo +=  QString::number(duration / 60) + "分" + QString::number(duration % 60) + "秒";
-            }
-            songInfoList.append(songInfo);
         }
-        if (searchWidget) {
-            searchWidget->displaySearchResults(songInfoList);
-            searchWidget->show();
-        } else {
-            qDebug() << "Error: searchWidget is null.";
-        }
-    } else {
-        qDebug() << "Network error:" << reply->errorString();
     }
+    
     reply->deleteLater();
-
 }
-
-
-
 
 void MainWindow::on_pushButton_clicked()
 {
@@ -681,21 +601,28 @@ void MainWindow::on_pushButton_clicked()
 // 添加到收藏夹
 void MainWindow::on_actionAdd_to_Favorites_triggered()
 {
-    // 获取当前播放的歌曲
-    QString currentFilePath = player->source().toLocalFile();
-    if (currentFilePath.isEmpty()) {
-        QMessageBox::information(this, "提示", "当前没有播放的歌曲");
+    QListWidgetItem *currentItem = ui->listWidget->currentItem();
+    QString filePath;
+    
+    if (currentItem) {
+        // 使用选中的歌曲
+        filePath = currentItem->data(Qt::UserRole).value<QUrl>().toLocalFile();
+    } else {
+        // 使用当前播放的歌曲作为备份
+        filePath = player->source().toLocalFile();
+    }
+    
+    if (filePath.isEmpty()) {
+        QMessageBox::information(this, "提示", "没有可添加的歌曲");
         return;
     }
     
-    // 检查是否已在收藏夹中
-    if (m_playlistInterface->isInFavorites(currentFilePath)) {
+    if (m_playlistInterface->isInFavorites(filePath)) {
         QMessageBox::information(this, "提示", "该歌曲已在收藏夹中");
         return;
     }
     
-    // 添加到收藏夹
-    if (m_playlistInterface->addCurrentSongToFavorites(currentFilePath, player)) {
+    if (m_playlistInterface->addCurrentSongToFavorites(filePath, player)) {
         QMessageBox::information(this, "成功", "歌曲已添加到收藏夹");
     } else {
         QMessageBox::warning(this, "失败", "添加到收藏夹失败");
@@ -713,7 +640,6 @@ void MainWindow::on_actionShow_Favorites_triggered()
         if (parts.size() >= 4) {
             QString displayText = QString("%1 - %2").arg(parts[0]).arg(parts[1]);
             ui->listWidget->addItem(displayText);
-            // 保存文件路径作为用户数据
             ui->listWidget->item(ui->listWidget->count() - 1)->setData(Qt::UserRole, parts[3]);
         }
     }
@@ -730,7 +656,6 @@ void MainWindow::on_actionCreate_Playlist_triggered()
     
     if (m_playlistInterface->createPlaylist(playlistName)) {
         QMessageBox::information(this, "成功", "歌单创建成功");
-        // 更新歌单列表
         updatePlaylistList();
     } else {
         QMessageBox::warning(this, "失败", "歌单创建失败，可能已存在同名歌单");
@@ -741,40 +666,43 @@ void MainWindow::on_actionCreate_Playlist_triggered()
 void MainWindow::updatePlaylistList()
 {
     QStringList playlists = m_playlistInterface->getAllPlaylistNames();
-    // 可以在这里更新UI中的歌单列表
-    qDebug() << "所有歌单:" << playlists;
 }
 
 // 添加到指定歌单
 void MainWindow::on_actionAdd_to_Playlist_triggered()
 {
-    // 获取当前播放的歌曲路径
-    QString filePath = player->source().toLocalFile();
+    QListWidgetItem *currentItem = ui->listWidget->currentItem();
+    QString filePath;
+    
+    if (currentItem) {
+        // 使用选中的歌曲
+        filePath = currentItem->data(Qt::UserRole).value<QUrl>().toLocalFile();
+    } else {
+        // 使用当前播放的歌曲作为备份
+        filePath = player->source().toLocalFile();
+    }
+    
     if (filePath.isEmpty()) {
-        QMessageBox::warning(this, "提示", "当前没有播放歌曲，无法添加到歌单。");
+        QMessageBox::warning(this, "提示", "没有可添加的歌曲。");
         return;
     }
-
-    // 获取所有歌单名称
+    
     QStringList playlistNames = m_playlistInterface->getAllPlaylistNames();
     if (playlistNames.isEmpty()) {
         QMessageBox::warning(this, "提示", "请先创建歌单。");
         return;
     }
-
-    // 弹出选择歌单对话框
+    
     bool ok;
     QString selectedPlaylist = QInputDialog::getItem(
         this, "选择歌单", "请选择要添加到的歌单:",
         playlistNames, 0, false, &ok);
-
+    
     if (ok && !selectedPlaylist.isEmpty()) {
-        // 获取歌曲信息（简化版）
         QFileInfo fileInfo(filePath);
         QString title = fileInfo.baseName();
-        int duration = player->duration() / 1000; // 转换为秒
-
-        // 添加到歌单
+        int duration = player->duration() / 1000;
+        
         if (m_playlistInterface->addToPlaylist(selectedPlaylist, title, "", "", filePath, "", "", duration)) {
             QMessageBox::information(this, "成功", "歌曲已成功添加到歌单！");
         } else {
@@ -786,32 +714,27 @@ void MainWindow::on_actionAdd_to_Playlist_triggered()
 // 加载歌单
 void MainWindow::on_actionLoad_Playlist_triggered()
 {
-    // 获取所有歌单名称
     QStringList playlistNames = m_playlistInterface->getAllPlaylistNames();
     if (playlistNames.isEmpty()) {
         QMessageBox::warning(this, "提示", "没有找到任何歌单。");
         return;
     }
-
-    // 弹出选择歌单对话框
+    
     bool ok;
     QString selectedPlaylist = QInputDialog::getItem(
         this, "选择歌单", "请选择要加载的歌单:",
         playlistNames, 0, false, &ok);
-
+    
     if (ok && !selectedPlaylist.isEmpty()) {
-        // 获取歌单中的所有歌曲
         QStringList songs = m_playlistInterface->getPlaylistSongs(selectedPlaylist);
         
         if (songs.isEmpty()) {
             QMessageBox::information(this, "提示", "选中的歌单中没有歌曲。");
             return;
         }
-
-        // 清空当前播放列表
+        
         ui->listWidget->clear();
         
-        // 添加歌单中的歌曲到播放列表
         foreach (const QString &songInfo, songs) {
             QStringList parts = songInfo.split('|');
             if (parts.size() >= 4) {
@@ -822,10 +745,9 @@ void MainWindow::on_actionLoad_Playlist_triggered()
                 ui->listWidget->addItem(item);
             }
         }
-
+        
         QMessageBox::information(this, "成功", QString("已成功加载 '%1' 歌单，共 %2 首歌曲。").arg(selectedPlaylist).arg(songs.size()));
         
-        // 可选：自动播放第一首歌曲
         if (ui->listWidget->count() > 0) {
             ui->listWidget->setCurrentRow(0);
             player->setSource(ui->listWidget->currentItem()->data(Qt::UserRole).value<QUrl>());

@@ -1,15 +1,12 @@
+// playlist_manager.h - 播放列表管理器头文件
 #ifndef PLAYLIST_MANAGER_H
 #define PLAYLIST_MANAGER_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-
-// 为C++编译器提供C链接
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include <stdbool.h>
 
 // 歌曲信息结构
 typedef struct {
@@ -39,7 +36,7 @@ typedef struct Playlist {
 } Playlist;
 
 // 收藏夹和歌单管理器
-typedef struct {
+typedef struct PlaylistManager {
     Playlist *favorites;    // 收藏夹
     Playlist *playlists;    // 所有歌单列表
     int playlist_count;     // 歌单数量

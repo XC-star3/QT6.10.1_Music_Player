@@ -63,6 +63,17 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="btnCreatePlaylist">
+         <property name="text">
+          <string>创建歌单</string>
+         </property>
+         <property name="icon">
+          <iconset resource="res.qrc">
+           <normaloff>:/images/images/audio24.png</normaloff>:/images/images/audio24.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QPushButton" name="btnAddToPlaylist">
          <property name="text">
           <string>添加到歌单</string>
@@ -77,6 +88,28 @@
         <widget class="QPushButton" name="btnLoadPlaylist">
          <property name="text">
           <string>加载歌单</string>
+         </property>
+         <property name="icon">
+          <iconset resource="res.qrc">
+           <normaloff>:/images/images/audio24.png</normaloff>:/images/images/audio24.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnShowFavorites">
+         <property name="text">
+          <string>显示收藏夹</string>
+         </property>
+         <property name="icon">
+          <iconset resource="res.qrc">
+           <normaloff>:/images/images/audio24.png</normaloff>:/images/images/audio24.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnAddToFavorites">
+         <property name="text">
+          <string>添加到收藏夹</string>
          </property>
          <property name="icon">
           <iconset resource="res.qrc">
