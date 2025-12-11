@@ -154,27 +154,80 @@ void lrcwidget::loadLyrics(const QString &filePath)
 QMap<QTime, QString> lrcwidget::parseLyrics(const QString &filePath)
 {
     QFile file(filePath);
-    //QMap<QTime, QString> lyricsMap;
+    QMap<QTime, QString> lyricsMap;
     if(file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         lyricsMap.clear();
         QTextStream in(&file);
 
-        QRegularExpression regex(R"(\[(\d{2}):(\d{2})(?::(\d{2}))?\](.*))");
-
+        // 匹配时间标签的正则表达式，支持 [mm:ss] 和 [mm:ss.xxx] 格式
+        QRegularExpression timeRegex(R"(\[(\d{2}):(\d{2})(?:\.(\d{2,3}))?\])");
+        // 匹配非时间标签的元数据标签 (如 [by:xxx], [ar:xxx] 等)
+        QRegularExpression metaRegex(R"(\[([a-zA-Z]+):([^\]]+)\])");
 
         while(!in.atEnd()){
-            QString line = in.readLine();
-            QRegularExpressionMatch match = regex.match(line);
-            if(match.hasMatch()){
-                int minutes = match.captured(1).toInt();
-                int seconds = match.captured(2).toInt();
+            QString line = in.readLine().trimmed();
+            if (line.isEmpty()) continue;
 
-                int milliseconds = match.captured(3).isEmpty() ? 0 : match.captured(3).toInt() * 10;
-                QString text = match.captured(4).trimmed();
+            // 检查是否包含时间标签
+            bool hasTimeTag = timeRegex.match(line).hasMatch();
+            // 检查是否只包含元数据标签
+            bool onlyMetaTag = !hasTimeTag && metaRegex.match(line).hasMatch();
+
+            if (onlyMetaTag) {
+                // 跳过纯元数据行
+                continue;
+            }
+
+            // 提取所有时间标签
+            QList<QTime> timeTags;
+            QRegularExpressionMatchIterator timeIt = timeRegex.globalMatch(line);
+
+            while (timeIt.hasNext()) {
+                QRegularExpressionMatch timeMatch = timeIt.next();
+                int minutes = timeMatch.captured(1).toInt();
+                int seconds = timeMatch.captured(2).toInt();
+                QString msStr = timeMatch.captured(3);
+                int milliseconds = 0;
+
+                if (!msStr.isEmpty()) {
+                    // 根据毫秒位数调整（2位或3位）
+                    if (msStr.length() == 2) {
+                        milliseconds = msStr.toInt() * 10;
+                    } else {
+                        milliseconds = msStr.toInt();
+                    }
+                }
 
                 QTime time(0, minutes, seconds, milliseconds);
-                lyricsMap[time] = text;
-                //qDebug() << "Parsed lyrics:" << time.toString() << text; // Debug output
+                timeTags.append(time);
+            }
+
+            if (timeTags.isEmpty()) {
+                // 没有时间标签的行跳过
+                continue;
+            }
+
+            // 提取歌词文本（去掉所有时间标签）
+            QString lyricText = line;
+            QRegularExpressionMatchIterator timeIt2 = timeRegex.globalMatch(line);
+            int offset = 0;
+            
+            while (timeIt2.hasNext()) {
+                QRegularExpressionMatch timeMatch = timeIt2.next();
+                int start = timeMatch.capturedStart() - offset;
+                int length = timeMatch.capturedLength();
+                lyricText.remove(start, length);
+                offset += length;
+            }
+            
+            lyricText = lyricText.trimmed();
+            if (lyricText.isEmpty()) {
+                continue;
+            }
+
+            // 为每个时间标签添加歌词
+            for (const QTime &time : timeTags) {
+                lyricsMap[time] = lyricText;
             }
         }
     }
